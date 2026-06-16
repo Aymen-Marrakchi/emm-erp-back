@@ -127,6 +127,7 @@ fastify.register(require("./modules/purchase/routes/purchase-product-category.ro
 // ── Finance ────────────────────────────────────────────────
 fastify.register(require("./modules/finance/routes/finance.routes"),          { prefix: "/api/finance"           });
 fastify.register(require("./modules/finance/routes/finance-document.routes"), { prefix: "/api/finance/documents" });
+fastify.register(require("./modules/finance/routes/emprunt.routes"),          { prefix: "/api/finance/emprunts"  });
 
 // ── Production ─────────────────────────────────────────────
 fastify.register(require("./modules/production/routes/work-center.routes"),      { prefix: "/api/production/work-centers"  });
