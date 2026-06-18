@@ -12,6 +12,8 @@ const companySettingsSchema = new mongoose.Schema(
     iban: { type: String, default: "", trim: true },
     bank: { type: String, default: "", trim: true },
     agence: { type: String, default: "", trim: true },
+    // Prefix used for customer invoice numbers, e.g. "FC" -> FC-0001/ddmmyyyy
+    invoicePrefix: { type: String, default: "FC", trim: true, uppercase: true },
   },
   { timestamps: true }
 );

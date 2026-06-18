@@ -80,9 +80,14 @@ async function generateDevisNo() {
 }
 
 async function generateInvoiceNo() {
-  const docs = await CustomerInvoice.find({ invoiceNo: /^FC-\d+/ }).select("invoiceNo").lean();
+  // Configurable prefix (Finance settings), defaults to "FC"
+  const settings = await financeService.getCompanySettings();
+  const prefix = (settings?.invoicePrefix || "FC").toUpperCase().replace(/[^A-Z0-9]/g, "") || "FC";
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`^${escaped}-(\\d+)`);
+  const docs = await CustomerInvoice.find({ invoiceNo: re }).select("invoiceNo").lean();
   const max = docs.reduce((m, d) => {
-    const match = String(d.invoiceNo || "").match(/^FC-(\d+)/);
+    const match = String(d.invoiceNo || "").match(re);
     const n = match ? parseInt(match[1], 10) : NaN;
     return isNaN(n) ? m : Math.max(m, n);
   }, 0);
@@ -90,7 +95,7 @@ async function generateInvoiceNo() {
   const dd   = String(now.getDate()).padStart(2, "0");
   const mm   = String(now.getMonth() + 1).padStart(2, "0");
   const yyyy = String(now.getFullYear());
-  return `FC-${String(max + 1).padStart(4, "0")}/${dd}${mm}${yyyy}`;
+  return `${prefix}-${String(max + 1).padStart(4, "0")}/${dd}${mm}${yyyy}`;
 }
 
 function buildTaxDefaults(settings) {

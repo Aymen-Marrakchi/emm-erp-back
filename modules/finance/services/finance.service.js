@@ -1062,6 +1062,10 @@ exports.updateCompanySettings = async (payload) => {
   for (const field of fields) {
     if (payload[field] !== undefined) settings[field] = String(payload[field]).trim();
   }
+  if (payload.invoicePrefix !== undefined) {
+    const cleaned = String(payload.invoicePrefix).trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    settings.invoicePrefix = cleaned || "FC";
+  }
   await settings.save();
   return settings;
 };
