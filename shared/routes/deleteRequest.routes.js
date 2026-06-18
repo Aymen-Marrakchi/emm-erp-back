@@ -18,7 +18,9 @@ const ADMIN = requireRole("ADMIN");
 async function deleteRequestRoutes(fastify) {
 
   // GET /api/delete-requests/my-approved
-  fastify.get("/my-approved", { preHandler: [protect, MANAGER] }, async (req, reply) => {
+  // Polled by the Navbar for every authenticated user; returns only the
+  // caller's own approved requests, so any logged-in role may read it.
+  fastify.get("/my-approved", { preHandler: [protect] }, async (req, reply) => {
     try {
       const requests = await svc.getApprovedForUser(req.user._id);
       return success(reply, requests);

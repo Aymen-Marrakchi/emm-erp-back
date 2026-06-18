@@ -9,6 +9,16 @@ exports.getAllOrders = async (req, reply) => {
   }
 };
 
+exports.getOrdersPaginated = async (req, reply) => {
+  try {
+    const { page, limit, search, status } = req.query || {};
+    const result = await salesOrderService.getOrdersPaginated({ page, limit, search, status });
+    return reply.code(200).send(result);
+  } catch (err) {
+    return reply.code(err.statusCode || 500).send({ message: err.message });
+  }
+};
+
 exports.getOrderById = async (req, reply) => {
   try {
     const order = await salesOrderService.getOrderById(req.params.id);

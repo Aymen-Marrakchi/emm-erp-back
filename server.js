@@ -9,22 +9,27 @@ const { startPayrollCron } = require("./hr/payrollCron");
 dotenv.config();
 
 const fastify = Fastify({
-  bodyLimit: 20 * 1024 * 1024, // 20 MB — needed for base64-encoded file uploads
-  logger: {
-    transport: {
-      target: "pino-pretty",
-      options: { colorize: true },
-    },
-  },
+  bodyLimit: 20 * 1024 * 1024,
+  logger: process.env.NODE_ENV !== "production"
+    ? { transport: { target: "pino-pretty", options: { colorize: true } } }
+    : true,
+
 });
 
 // ── Plugins ────────────────────────────────────────────────
 fastify.register(require("@fastify/helmet"));
+// Production origins come from CORS_ORIGINS (comma-separated), e.g.
+// CORS_ORIGINS="https://app.mycompany.tn,https://www.mycompany.tn"
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CLIENT_URL || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 fastify.register(require("@fastify/cors"), {
   origin: (origin, cb) => {
     const isLocalDevOrigin =
       !origin || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
-    if (isLocalDevOrigin) {
+    if (isLocalDevOrigin || allowedOrigins.includes(origin)) {
       cb(null, true);
     } else {
       cb(new Error("Not allowed by CORS"), false);
@@ -127,8 +132,7 @@ fastify.register(require("./modules/purchase/routes/purchase-product-category.ro
 // ── Finance ────────────────────────────────────────────────
 fastify.register(require("./modules/finance/routes/finance.routes"),          { prefix: "/api/finance"           });
 fastify.register(require("./modules/finance/routes/finance-document.routes"), { prefix: "/api/finance/documents" });
-fastify.register(require("./modules/finance/routes/emprunt.routes"),          { prefix: "/api/finance/emprunts"  });
-
+fastify.register(require("./modules/finance/routes/emprunt.routes"), { prefix: "/api/finance/emprunts" });
 // ── Production ─────────────────────────────────────────────
 fastify.register(require("./modules/production/routes/work-center.routes"),      { prefix: "/api/production/work-centers"  });
 fastify.register(require("./modules/production/routes/production-order.routes"), { prefix: "/api/production/orders"        });

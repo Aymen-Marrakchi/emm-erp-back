@@ -19,6 +19,9 @@ async function salesOrderRoutes(fastify) {
 
   fastify.get("/", { preHandler: readAccess }, salesOrderController.getAllOrders);
 
+  // Paginated list (must be declared before "/:id" so it isn't treated as an id)
+  fastify.get("/paginated", { preHandler: readAccess }, salesOrderController.getOrdersPaginated);
+
   fastify.get(
     "/:id",
     { preHandler: readAccess, schema: { params: idParam } },

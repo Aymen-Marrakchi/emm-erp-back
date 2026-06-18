@@ -162,4 +162,8 @@ const salesOrderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for the list endpoints (sorted by createdAt, filtered by status)
+salesOrderSchema.index({ createdAt: -1 });
+salesOrderSchema.index({ status: 1 });
+
 module.exports = mongoose.model("SalesOrder", salesOrderSchema);

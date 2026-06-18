@@ -73,19 +73,23 @@ async function generateSplitOrderNo(baseOrderNo) {
   return candidate;
 }
 
-const populateOrder = (query) =>
-  query
-    .populate("lines.productId")
-    .populate("lines.depotId", "name productTypeScope status")
-    .populate("lines.depotPreparedBy", "name email role")
-    .populate("createdBy", "name email role")
-    .populate("ordonnancedBy", "name email role")
-    .populate("preparedBy", "name email role")
-    .populate("pickingSlipPrintedBy", "name email role")
-    .populate("packingValidatedBy", "name email role")
-    .populate("carrierId")
-    .populate("vehicleId", "matricule capacityPackets capacityKg")
-    .populate("customerId", "name email phone company mf address");
+// Shared populate spec — used both for query population and in-memory document
+// population (so list endpoints don't need a second full collection scan).
+const ORDER_POPULATE = [
+  { path: "lines.productId" },
+  { path: "lines.depotId", select: "name productTypeScope status" },
+  { path: "lines.depotPreparedBy", select: "name email role" },
+  { path: "createdBy", select: "name email role" },
+  { path: "ordonnancedBy", select: "name email role" },
+  { path: "preparedBy", select: "name email role" },
+  { path: "pickingSlipPrintedBy", select: "name email role" },
+  { path: "packingValidatedBy", select: "name email role" },
+  { path: "carrierId" },
+  { path: "vehicleId", select: "matricule capacityPackets capacityKg" },
+  { path: "customerId", select: "name email phone company mf address" },
+];
+
+const populateOrder = (query) => query.populate(ORDER_POPULATE);
 
 async function synchronizePreparationState(order) {
   if (!order) return order;
@@ -337,9 +341,11 @@ async function applyOrdonnancement(orders, payloads, userId) {
     );
 
     if (totalAllocated > availableForPlanning) {
+      const product = await StockProduct.findById(productId).select("name sku");
+      const label = product ? `${product.name} (${product.sku})` : productId;
       throw Object.assign(
         new Error(
-          `Allocated quantity for product ${productId} exceeds available quantity for ordonnancement (${availableForPlanning})`
+          `Stock insuffisant pour "${label}" : quantité allouée (${totalAllocated}) supérieure au disponible (${availableForPlanning}). Réduisez la quantité ou utilisez « Demander production » pour le reste.`
         ),
         { statusCode: 409 }
       );
@@ -355,9 +361,11 @@ async function applyOrdonnancement(orders, payloads, userId) {
     );
 
     if (depotId && totalAllocated > availableAtDepotForPlanning) {
+      const product = await StockProduct.findById(productId).select("name sku");
+      const label = product ? `${product.name} (${product.sku})` : productId;
       throw Object.assign(
         new Error(
-          `Allocated quantity for product ${productId} exceeds available quantity in the selected depot (${availableAtDepotForPlanning})`
+          `Stock insuffisant pour "${label}" dans le dépôt sélectionné : quantité allouée (${totalAllocated}) supérieure au disponible (${availableAtDepotForPlanning}).`
         ),
         { statusCode: 409 }
       );
@@ -508,12 +516,13 @@ async function applyOrdonnancement(orders, payloads, userId) {
 
 exports.getAllOrders = async () => {
   const orders = await SalesOrder.find().sort({ createdAt: -1 });
-  for (const order of orders) {
-    await synchronizePreparationState(order);
-  }
-  return populateOrder(SalesOrder.find({ _id: { $in: orders.map((order) => order._id) } })).sort({
-    createdAt: -1,
-  });
+  // Run the preparation-state sync in parallel (each is a no-op unless an order
+  // actually transitions to PREPARED, in which case it saves itself).
+  await Promise.all(orders.map((order) => synchronizePreparationState(order)));
+  // Populate the documents we already have in memory instead of issuing a second
+  // full collection scan. Same result shape, one less query over all orders.
+  await SalesOrder.populate(orders, ORDER_POPULATE);
+  return orders;
 };
 
 exports.getOrderById = async (id) => {
@@ -521,6 +530,56 @@ exports.getOrderById = async (id) => {
   if (!order) return null;
   await synchronizePreparationState(order);
   return populateOrder(SalesOrder.findById(id));
+};
+
+const ACTIVE_STATUSES = ["DRAFT", "ORDONNANCED", "CONFIRMED", "PREPARED", "SHIPPED"];
+
+exports.getOrdersPaginated = async ({ page = 1, limit = 20, search = "", status = "ALL" } = {}) => {
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(limit) || 20));
+  const now = new Date();
+
+  const filter = {};
+  if (search && String(search).trim()) {
+    const safe = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = new RegExp(safe, "i");
+    filter.$or = [{ orderNo: rx }, { customerName: rx }];
+  }
+  if (status && status !== "ALL") {
+    if (status === "LATE") {
+      filter.promisedDate = { $lt: now };
+      filter.status = { $in: ACTIVE_STATUSES };
+    } else {
+      filter.status = status;
+    }
+  }
+
+  const total = await SalesOrder.countDocuments(filter);
+  const orders = await SalesOrder.find(filter)
+    .sort({ createdAt: -1 })
+    .skip((pageNum - 1) * pageSize)
+    .limit(pageSize);
+
+  await Promise.all(orders.map((order) => synchronizePreparationState(order)));
+  await SalesOrder.populate(orders, ORDER_POPULATE);
+
+  // KPI counts are computed across ALL orders, not just the current page.
+  const [totalAll, draft, confirmed, prepared, late] = await Promise.all([
+    SalesOrder.countDocuments({}),
+    SalesOrder.countDocuments({ status: "DRAFT" }),
+    SalesOrder.countDocuments({ status: "CONFIRMED" }),
+    SalesOrder.countDocuments({ status: "PREPARED" }),
+    SalesOrder.countDocuments({ promisedDate: { $lt: now }, status: { $in: ACTIVE_STATUSES } }),
+  ]);
+
+  return {
+    items: orders,
+    total,
+    page: pageNum,
+    limit: pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    kpis: { total: totalAll, draft, confirmed, prepared, late },
+  };
 };
 
 exports.createOrder = async ({

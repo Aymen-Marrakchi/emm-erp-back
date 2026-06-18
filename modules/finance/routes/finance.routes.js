@@ -34,8 +34,9 @@ async function financeRoutes(fastify) {
   const calendarAccess = [protect, requireRole("ADMIN", "FINANCE_MANAGER", "PURCHASE_MANAGER")];
   fastify.get("/calendar", { preHandler: calendarAccess }, controller.getCalendar);
 
-  // Company settings
-  fastify.get("/settings", { preHandler: access }, controller.getSettings);
+  // Company settings — readable by any authenticated user (needed across modules
+  // to print devis/factures/reports); only ADMIN/FINANCE_MANAGER may update.
+  fastify.get("/settings", { preHandler: [protect] }, controller.getSettings);
   fastify.put("/settings", { preHandler: access }, controller.updateSettings);
 
   // Pay a supplier invoice from Finance
