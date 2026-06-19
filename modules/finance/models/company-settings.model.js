@@ -14,6 +14,10 @@ const companySettingsSchema = new mongoose.Schema(
     agence: { type: String, default: "", trim: true },
     // Prefix used for customer invoice numbers, e.g. "FC" -> FC-0001/ddmmyyyy
     invoicePrefix: { type: String, default: "FC", trim: true, uppercase: true },
+    // Optional floor for the next invoice number. When set higher than the
+    // current max, the next facture uses it; afterwards counting resumes
+    // automatically. 0 = no override (pure auto-increment).
+    invoiceNextNumber: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );

@@ -25,11 +25,14 @@ async function generateInvoiceNo() {
     const n = match ? parseInt(match[1], 10) : NaN;
     return isNaN(n) ? m : Math.max(m, n);
   }, 0);
+  // Optional manual floor from Finance settings (0 = pure auto-increment)
+  const floor = Math.max(0, Math.floor(Number(settings?.invoiceNextNumber) || 0));
+  const next = Math.max(max + 1, floor);
   const now = new Date();
   const dd   = String(now.getDate()).padStart(2, "0");
   const mm   = String(now.getMonth() + 1).padStart(2, "0");
   const yyyy = String(now.getFullYear());
-  return `${prefix}-${String(max + 1).padStart(4, "0")}/${dd}${mm}${yyyy}`;
+  return `${prefix}-${String(next).padStart(4, "0")}/${dd}${mm}${yyyy}`;
 }
 
 async function generateChequeReference() {

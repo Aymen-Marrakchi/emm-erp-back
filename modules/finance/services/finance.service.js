@@ -1066,6 +1066,10 @@ exports.updateCompanySettings = async (payload) => {
     const cleaned = String(payload.invoicePrefix).trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     settings.invoicePrefix = cleaned || "FC";
   }
+  if (payload.invoiceNextNumber !== undefined) {
+    const n = Math.max(0, Math.floor(Number(payload.invoiceNextNumber) || 0));
+    settings.invoiceNextNumber = n;
+  }
   await settings.save();
   return settings;
 };

@@ -71,12 +71,18 @@ function roundAmount(value) {
 }
 
 async function generateDevisNo() {
-  const docs = await Devis.find({ devisNo: /^FE-\d+$/ }).select("devisNo").lean();
+  // Match both "FE-0001" and "FE-0001/ddmmyyyy"
+  const docs = await Devis.find({ devisNo: /^FE-\d+/ }).select("devisNo").lean();
   const max = docs.reduce((m, d) => {
-    const n = parseInt((d.devisNo || "").replace("FE-", ""), 10);
+    const match = String(d.devisNo || "").match(/^FE-(\d+)/);
+    const n = match ? parseInt(match[1], 10) : NaN;
     return isNaN(n) ? m : Math.max(m, n);
   }, 0);
-  return `FE-${String(max + 1).padStart(4, "0")}`;
+  const now = new Date();
+  const dd   = String(now.getDate()).padStart(2, "0");
+  const mm   = String(now.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(now.getFullYear());
+  return `FE-${String(max + 1).padStart(4, "0")}/${dd}${mm}${yyyy}`;
 }
 
 async function generateInvoiceNo() {
@@ -91,11 +97,14 @@ async function generateInvoiceNo() {
     const n = match ? parseInt(match[1], 10) : NaN;
     return isNaN(n) ? m : Math.max(m, n);
   }, 0);
+  // Optional manual floor from Finance settings (0 = pure auto-increment)
+  const floor = Math.max(0, Math.floor(Number(settings?.invoiceNextNumber) || 0));
+  const next = Math.max(max + 1, floor);
   const now = new Date();
   const dd   = String(now.getDate()).padStart(2, "0");
   const mm   = String(now.getMonth() + 1).padStart(2, "0");
   const yyyy = String(now.getFullYear());
-  return `${prefix}-${String(max + 1).padStart(4, "0")}/${dd}${mm}${yyyy}`;
+  return `${prefix}-${String(next).padStart(4, "0")}/${dd}${mm}${yyyy}`;
 }
 
 function buildTaxDefaults(settings) {
