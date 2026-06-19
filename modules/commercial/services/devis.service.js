@@ -70,7 +70,7 @@ function roundAmount(value) {
   return Math.round((Number(value || 0) + Number.EPSILON) * 1000) / 1000;
 }
 
-async function generateDevisNo() {
+async function generateDevisNo(dateForSuffix) {
   // Match both "FE-0001" and "FE-0001/ddmmyyyy"
   const docs = await Devis.find({ devisNo: /^FE-\d+/ }).select("devisNo").lean();
   const max = docs.reduce((m, d) => {
@@ -78,14 +78,15 @@ async function generateDevisNo() {
     const n = match ? parseInt(match[1], 10) : NaN;
     return isNaN(n) ? m : Math.max(m, n);
   }, 0);
-  const now = new Date();
-  const dd   = String(now.getDate()).padStart(2, "0");
-  const mm   = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(now.getFullYear());
+  // Date suffix uses the Validité (due) date when available, else now
+  const d = dateForSuffix ? new Date(dateForSuffix) : new Date();
+  const dd   = String(d.getDate()).padStart(2, "0");
+  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(d.getFullYear());
   return `FE-${String(max + 1).padStart(4, "0")}/${dd}${mm}${yyyy}`;
 }
 
-async function generateInvoiceNo() {
+async function generateInvoiceNo(dateForSuffix) {
   // Configurable prefix (Finance settings), defaults to "FC"
   const settings = await financeService.getCompanySettings();
   const prefix = (settings?.invoicePrefix || "FC").toUpperCase().replace(/[^A-Z0-9]/g, "") || "FC";
@@ -100,10 +101,11 @@ async function generateInvoiceNo() {
   // Optional manual floor from Finance settings (0 = pure auto-increment)
   const floor = Math.max(0, Math.floor(Number(settings?.invoiceNextNumber) || 0));
   const next = Math.max(max + 1, floor);
-  const now = new Date();
-  const dd   = String(now.getDate()).padStart(2, "0");
-  const mm   = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(now.getFullYear());
+  // Date suffix: use the provided date (e.g. devis validation date) or now
+  const d = dateForSuffix ? new Date(dateForSuffix) : new Date();
+  const dd   = String(d.getDate()).padStart(2, "0");
+  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(d.getFullYear());
   return `${prefix}-${String(next).padStart(4, "0")}/${dd}${mm}${yyyy}`;
 }
 
@@ -208,7 +210,7 @@ exports.createFromOrder = async (orderId, userId = null) => {
 
   if (!devis) {
     devis = await Devis.create({
-      devisNo: await generateDevisNo(),
+      devisNo: await generateDevisNo(order.promisedDate || new Date()),
       salesOrderId: order._id,
       customerId: customer?._id || order.customerId || null,
       customerName: order.customerName,
@@ -307,7 +309,8 @@ exports.createInvoiceFromDevis = async (orderId) => {
   const devis = await Devis.findOne({ salesOrderId: orderId });
   if (!devis) return null;
 
-  const invoiceNo = await generateInvoiceNo();
+  // Facture number date suffix = devis Validité (due) date
+  const invoiceNo = await generateInvoiceNo(devis.dueDate || new Date());
   const invoice = await CustomerInvoice.create({
     invoiceNo,
     salesOrderId: devis.salesOrderId,
